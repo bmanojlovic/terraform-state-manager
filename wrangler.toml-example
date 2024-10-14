@@ -1,0 +1,22 @@
+# Configuration file for Cloudflare Workers
+name = "terraform-state-manager"
+main = "src/index.ts"
+compatibility_date = "2024-09-25"
+compatibility_flags = ["nodejs_compat"]
+
+# Build command for the project
+[build]
+command = "npm install && npm run build"
+
+# D1 database configuration
+[[d1_databases]]
+binding = "DB"
+database_name = "tf-state-manager"
+database_id = "_DATABASE_ID_"
+migrations_dir = "migrations"
+
+# R2 bucket configuration for storing Terraform state files
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "_REAL_BUCKET_NAME_"
+
