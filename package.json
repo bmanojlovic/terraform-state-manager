@@ -12,16 +12,16 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.32",
+    "@cloudflare/vitest-pool-workers": "^0.8.18",
     "@cloudflare/workers-types": "^4.20241127.0",
     "@jridgewell/sourcemap-codec": "^1.5.0",
     "@rollup/plugin-inject": "^5.0.5",
     "@types/node": "^22.10.1",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.25.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.6",
-    "wrangler": "^3.91.0"
+    "vitest": "^3.1.1",
+    "wrangler": "^4.12.0"
   },
   "dependencies": {
     "@types/jszip": "^3.4.1",
