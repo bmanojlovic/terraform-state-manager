@@ -6,6 +6,7 @@ import { projectAuth, combinedAuth } from './authMiddleware';
 import userManager, { listUsers, addUser, updateUser, deleteUser } from './userManager';
 import { getConfig, setConfig } from './configManager';
 import { Env, AuthContext } from './types';
+import { logger } from './logger';
 
 const app = new Hono<{ Bindings: Env }>();
 app.use('*', cors());
@@ -22,11 +23,11 @@ const getProjectAndStatePath = (c: AuthContext, prefix: string) => {
 
 // Terraform state routes
 terraformGroup.get('/states', async (c: AuthContext) => {
-	console.log('Debug: Entering /states route handler');
+	logger.debug('Entering /states route handler');
 	try {
 		const user = c.get('user');
 		const states = await listStates(c);
-		console.log('Debug: listStates result:', states);
+		logger.debug('listStates result:', states);
 		if (user.project === 'all') {
 			return c.json(states);
 		} else {
@@ -34,14 +35,14 @@ terraformGroup.get('/states', async (c: AuthContext) => {
 			return c.json(filteredStates);
 		}
 	} catch (error) {
-		console.error('Error in /states route:', error);
+		logger.error('Error in /states route:', error);
 		return c.json({ error: 'Internal server error' }, 500);
 	}
 });
 
 terraformGroup.get('/states/:projectName/*', async (c: AuthContext) => {
 	const { projectName, statePath } = getProjectAndStatePath(c, 'states');
-	console.log(`Debug: Getting state for project: ${projectName}, state path: ${statePath}`);
+	logger.debug(`Getting state for project: ${projectName}, state path: ${statePath}`);
 	return await getState(projectName, statePath, c.env);
 });
 
@@ -59,12 +60,12 @@ terraformGroup.delete('/states/:projectName/*', async (c: AuthContext) => {
 // Lock routes
 const handleLock = async (c: AuthContext, action: 'acquire' | 'release') => {
 	const { projectName, statePath } = getProjectAndStatePath(c, 'lock');
-	console.log(`Debug: ${action === 'acquire' ? 'Acquiring' : 'Releasing'} lock for project: ${projectName}, state path: ${statePath}`);
+	logger.debug(`${action === 'acquire' ? 'Acquiring' : 'Releasing'} lock for project: ${projectName}, state path: ${statePath}`);
 	let body;
 	try {
 		body = await c.req.json();
 	} catch (error) {
-		console.log(`Debug: No JSON body provided for lock ${action}. Using empty object.`);
+		logger.debug(`No JSON body provided for lock ${action}. Using empty object.`);
 		body = {};
 	}
 	return action === 'acquire'
@@ -76,7 +77,7 @@ terraformGroup.post('/lock/:projectName/*', (c: AuthContext) => handleLock(c, 'a
 terraformGroup.delete('/lock/:projectName/*', (c: AuthContext) => handleLock(c, 'release'));
 terraformGroup.get('/lock/:projectName/*', async (c: AuthContext) => {
 	const { projectName, statePath } = getProjectAndStatePath(c, 'lock');
-	console.log(`Debug: Getting lock info for project: ${projectName}, state path: ${statePath}`);
+	logger.debug(`Getting lock info for project: ${projectName}, state path: ${statePath}`);
 	return await getLockInfo(projectName, statePath, c.env);
 });
 
@@ -89,7 +90,7 @@ app.route('/api/v1', terraformGroup);
 // User management routes
 const usersGroup = new Hono<{ Bindings: Env }>();
 usersGroup.use('*', combinedAuth, async (c, next) => {
-	console.log(`Accessing user management route: ${c.req.method} ${c.req.path}`);
+	logger.debug(`Accessing user management route: ${c.req.method} ${c.req.path}`);
 	await next();
 });
 usersGroup.get('/users', (c: AuthContext) => {
@@ -107,7 +108,7 @@ import { createStatesBackup, createUsersBackupZip } from './backupManager';
 // Configuration routes
 const configGroup = new Hono<{ Bindings: Env }>();
 configGroup.use('*', combinedAuth, async (c, next) => {
-	console.log(`Accessing configuration management route: ${c.req.method} ${c.req.path}`);
+	logger.debug(`Accessing configuration management route: ${c.req.method} ${c.req.path}`);
 	await next();
 });
 configGroup.get('/config', async (c) => {
@@ -118,9 +119,9 @@ configGroup.post('/config', async (c) => {
 	const body = await c.req.json();
 	if (typeof body.maxBackups === 'number' && body.maxBackups > 0) {
 		await setConfig({ maxBackups: body.maxBackups }, c.env);
-		return c.text('Configuration updated successfully', 200);
+		return c.json({ message: 'Configuration updated successfully' }, 200);
 	} else {
-		return c.text('Invalid configuration', 400);
+		return c.json({ error: 'Invalid configuration' }, 400);
 	}
 });
 
@@ -129,7 +130,7 @@ app.route('/api/v1', configGroup);
 // Backup routes
 const backupGroup = new Hono<{ Bindings: Env }>();
 backupGroup.use('*', combinedAuth, async (c, next) => {
-	console.log(`Accessing backup route: ${c.req.method} ${c.req.path}`);
+	logger.debug(`Accessing backup route: ${c.req.method} ${c.req.path}`);
 	await next();
 });
 backupGroup.get('/backup/states', async (c) => await createStatesBackup(c.env));

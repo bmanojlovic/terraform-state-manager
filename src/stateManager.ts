@@ -1,30 +1,31 @@
 import { Env, AuthContext } from './types';
 import { getConfig } from './configManager';
 import { sanitizePath } from './utils';
+import { logger } from './logger';
 
 // Function to retrieve a Terraform state file
 export async function getState(projectName: string, statePath: string, env: Env): Promise<Response> {
 	const fullStateName = `${projectName}/${statePath}`;
 	const sanitizedStateName = sanitizePath(fullStateName);
-	console.log(`Debug: Getting state for ${sanitizedStateName}`);
+	logger.debug(`Debug: Getting state for ${sanitizedStateName}`);
 	try {
 		const object = await env.BUCKET.get(sanitizedStateName);
 
 		if (object) {
 			const state = await object.text();
-			console.log(`Debug: State found for ${fullStateName}`);
+			logger.debug(`Debug: State found for ${fullStateName}`);
 			return new Response(state, {
 				headers: { 'Content-Type': 'application/json' },
 			});
 		} else {
-			console.log(`Debug: State not found for ${fullStateName}`);
+			logger.debug(`Debug: State not found for ${fullStateName}`);
 			return new Response(JSON.stringify({ error: 'State not found' }), {
 				status: 404,
 				headers: { 'Content-Type': 'application/json' },
 			});
 		}
 	} catch (error) {
-		console.error(`Error getting state for ${fullStateName}:`, error);
+		logger.error(`Error getting state for ${fullStateName}:`, error);
 		return new Response(JSON.stringify({ error: 'Error getting state' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
@@ -34,21 +35,21 @@ export async function getState(projectName: string, statePath: string, env: Env)
 
 // Function to list Terraform state files
 export async function listStates(c: AuthContext): Promise<string[]> {
-	console.log(`Debug: Listing states`);
+	logger.debug(`Debug: Listing states`);
 	try {
 		if (!c.env.BUCKET) {
-			console.error('Debug: BUCKET is undefined');
+			logger.error('Debug: BUCKET is undefined');
 			throw new Error('Internal server error: BUCKET is undefined');
 		}
 		const objects = await c.env.BUCKET.list();
-		console.log(`Debug: Successfully listed objects from R2 bucket`);
+		logger.debug(`Debug: Successfully listed objects from R2 bucket`);
 
 		const states = objects.objects.map((obj: { key: string }) => obj.key);
 
-		console.log(`Debug: Found ${states.length} states`);
+		logger.debug(`Debug: Found ${states.length} states`);
 		return states;
 	} catch (error) {
-		console.error(`Error listing states:`, error);
+		logger.error(`Error listing states:`, error);
 		return []; // Return an empty array instead of throwing
 	}
 }
@@ -57,17 +58,17 @@ export async function listStates(c: AuthContext): Promise<string[]> {
 export async function setState(projectName: string, statePath: string, state: string, env: Env): Promise<Response> {
 	const fullStateName = `${projectName}/${statePath}`;
 	const sanitizedStateName = sanitizePath(fullStateName);
-	console.log(`Debug: Setting state for ${sanitizedStateName}`);
+	logger.debug(`Debug: Setting state for ${sanitizedStateName}`);
 	try {
 		await rotateBackups(sanitizedStateName, env);
 		await env.BUCKET.put(sanitizedStateName, state);
-		console.log(`Debug: State updated successfully for ${sanitizedStateName}`);
+		logger.debug(`Debug: State updated successfully for ${sanitizedStateName}`);
 		return new Response(JSON.stringify({ message: 'State updated successfully' }), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },
 		});
 	} catch (error) {
-		console.error(`Error setting state for ${fullStateName}:`, error);
+		logger.error(`Error setting state for ${fullStateName}:`, error);
 		return new Response(JSON.stringify({ error: 'Error setting state' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },

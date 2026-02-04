@@ -36,5 +36,41 @@ describe('State Manager', () => {
     });
   });
 
-  // Add tests for setState, deleteState, and listStates
+  describe('setState', () => {
+    it('should store a state file', async () => {
+      mockEnv.BUCKET.put.mockResolvedValue({});
+      mockEnv.DB = { prepare: vi.fn().mockReturnThis(), bind: vi.fn().mockReturnThis(), first: vi.fn().mockResolvedValue({ value: '3' }) } as any;
+
+      const response = await setState('test-project', 'test-state', '{"version": 4}', mockEnv);
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('deleteState', () => {
+    it('should delete a state file', async () => {
+      mockEnv.BUCKET.delete.mockResolvedValue({});
+
+      const response = await deleteState('test-project', 'test-state', mockEnv);
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('listStates', () => {
+    it('should list all state files', async () => {
+      const mockContext = {
+        env: {
+          BUCKET: {
+            list: vi.fn().mockResolvedValue({
+              objects: [{ key: 'project1/state1' }, { key: 'project2/state2' }]
+            })
+          }
+        }
+      } as any;
+
+      const states = await listStates(mockContext);
+      
+      expect(states).toHaveLength(2);
+      expect(states).toEqual(['project1/state1', 'project2/state2']);
+    });
+  });
 });

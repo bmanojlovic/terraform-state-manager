@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 // Utility function to sanitize file paths
 export function sanitizePath(path: string): string {
   // Remove any '..' or '.' components to prevent directory traversal
@@ -79,7 +81,7 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     // Constant-time comparison
     return newDerivedKey.every((value, index) => value === storedDerivedKey[index]);
   } catch (error) {
-    console.error('Password verification error:', error);
+    logger.error('Password verification error:', error);
     return false;
   }
 }

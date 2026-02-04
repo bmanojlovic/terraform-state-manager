@@ -1,7 +1,5 @@
 import { Env } from './types';
-import { Hono } from 'hono';
-
-const configManager = new Hono<{ Bindings: Env }>();
+import { logger } from './logger';
 
 // Interface for state configuration
 interface StateConfig {
@@ -18,29 +16,12 @@ export async function getConfig(env: Env): Promise<StateConfig> {
 		}
 		return { maxBackups: 3 }; // Default configuration if not set
 	} catch (error) {
-		console.error('Error fetching configuration:', error);
+		logger.error('Error fetching configuration:', error);
 		return { maxBackups: 3 }; // Return default config on error
 	}
 }
-
-configManager.get('/config', async (c) => {
-	const config = await getConfig(c.env);
-	return c.json(config);
-});
 
 // Function to set configuration
 export async function setConfig(config: StateConfig, env: Env): Promise<void> {
 	await env.DB.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').bind('maxBackups', config.maxBackups.toString()).run();
 }
-
-configManager.post('/config', async (c) => {
-	const body = await c.req.json();
-	if (typeof body.maxBackups === 'number' && body.maxBackups > 0) {
-		await setConfig({ maxBackups: body.maxBackups }, c.env);
-		return c.text('Configuration updated successfully', 200);
-	} else {
-		return c.text('Invalid configuration', 400);
-	}
-});
-
-export default configManager;

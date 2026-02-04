@@ -1,5 +1,6 @@
 import { Env } from './types';
 import { sanitizePath } from './utils';
+import { logger } from './logger';
 
 // Interface for lock information
 interface LockInfo {
@@ -52,7 +53,7 @@ export async function acquireLock(projectName: string, statePath: string, lockIn
 			return new Response('Failed to acquire lock', { status: 500 });
 		}
 	} catch (error) {
-		console.error('Error acquiring lock:', error);
+		logger.error('Error acquiring lock:', error);
 		return new Response('Internal server error', { status: 500 });
 	}
 }
@@ -79,7 +80,7 @@ export async function getLockInfo(projectName: string, statePath: string, env: E
 			});
 		}
 	} catch (error) {
-		console.error('Error getting lock info:', error);
+		logger.error('Error getting lock info:', error);
 		return new Response(JSON.stringify({ error: 'Internal server error' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
@@ -132,7 +133,7 @@ export async function releaseLock(projectName: string, statePath: string, lockIn
 			});
 		}
 	} catch (error) {
-		console.error('Error releasing lock:', error);
+		logger.error('Error releasing lock:', error);
 		return new Response(JSON.stringify({ error: 'Internal server error' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },

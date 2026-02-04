@@ -1,0 +1,76 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Setup wrangler config for testing
+        run: |
+          cat > wrangler.toml << 'EOF'
+          name = "terraform-state-manager-test"
+          main = "src/index.ts"
+          compatibility_date = "2024-09-25"
+          compatibility_flags = ["nodejs_compat"]
+          
+          [build]
+          command = "npm install && npm run build"
+          
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "tf-state-manager-test"
+          database_id = "test-db-id"
+          migrations_dir = "migrations"
+          
+          [[r2_buckets]]
+          binding = "BUCKET"
+          bucket_name = "tf-state-test"
+          EOF
+        
+      - name: Run unit tests
+        run: npm test
+        
+      - name: Debug tokens
+        run: |
+          echo "AUTH_TOKEN length: ${#AUTH_TOKEN}"
+          echo "First 8 chars: ${AUTH_TOKEN:0:8}"
+        env:
+          AUTH_TOKEN: ${{ secrets.TEST_AUTH_TOKEN }}
+      
+      - name: Create .dev.vars for wrangler
+        run: |
+          echo "AUTH_TOKEN=${{ secrets.TEST_AUTH_TOKEN }}" > .dev.vars
+      
+      - name: Run D1 migrations
+        run: npx wrangler d1 migrations apply tf-state-manager-test --local
+      
+      - name: Start wrangler dev
+        run: |
+          npx wrangler dev --local --port 8787 &
+          sleep 5
+        env:
+          AUTH_TOKEN: ${{ secrets.TEST_AUTH_TOKEN }}
+          
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          BASE_URL: http://localhost:8787
+          AUTH_TOKEN: ${{ secrets.TEST_AUTH_TOKEN }}
+        
+      - name: Stop wrangler
+        if: always()
+        run: pkill -f "wrangler dev" || true

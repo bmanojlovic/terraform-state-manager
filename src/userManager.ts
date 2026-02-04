@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
-import { Env, AuthContext } from './types';
+import { Env, AuthContext, isAdmin } from './types';
 import { hashPassword } from './utils';
-
-const userManager = new Hono<{ Bindings: Env }>();
+import { logger } from './logger';
 
 // Helper functions
 async function checkUserExists(env: Env, username: string): Promise<boolean> {
@@ -19,19 +18,17 @@ async function fetchAllUsers(env: Env): Promise<any[]> {
 export async function listUsers(c: AuthContext) {
 	try {
 		const currentUser = c.get('user');
-		if (currentUser.role === 'admin') {
-			// Admin user can see all users
+		if (isAdmin(currentUser)) {
 			const users = await fetchAllUsers(c.env);
 			return c.json(users);
 		} else {
-			// Regular user can only see their own information
 			const user = await c.env.DB.prepare('SELECT username, project, role, last_login, created_at, updated_at FROM auth WHERE username = ?')
 				.bind(currentUser.username)
 				.first();
 			return c.json(user ? [user] : []);
 		}
 	} catch (error) {
-		console.error('Error fetching users:', error);
+		logger.error('Error fetching users:', error);
 		return c.json({ error: 'Error fetching users' }, 500);
 	}
 }
@@ -39,7 +36,7 @@ export async function listUsers(c: AuthContext) {
 export async function addUser(c: AuthContext) {
 	try {
 		const currentUser = c.get('user');
-		if (currentUser.role !== 'admin') {
+		if (!isAdmin(currentUser)) {
 			return c.json({ error: 'Unauthorized' }, 403);
 		}
 
@@ -63,7 +60,7 @@ export async function addUser(c: AuthContext) {
 			throw new Error('Failed to insert user into database');
 		}
 	} catch (error) {
-		console.error('Error adding user:', error);
+		logger.error('Error adding user:', error);
 		if (error instanceof Error) {
 			return c.json({ error: 'Error adding user', details: error.message }, 500);
 		} else {
@@ -77,7 +74,7 @@ export async function updateUser(c: AuthContext) {
 	const username = c.req.param('username');
 	const { password, project, role } = await c.req.json();
 
-	if (currentUser.role !== 'admin' && currentUser.username !== username) {
+	if (!isAdmin(currentUser) && currentUser.username !== username) {
 		return c.json({ error: 'Unauthorized' }, 403);
 	}
 
@@ -87,11 +84,11 @@ export async function updateUser(c: AuthContext) {
 		updates.push('password = ?');
 		binds.push(await hashPassword(password));
 	}
-	if (project && currentUser.role === 'admin') {
+	if (project && isAdmin(currentUser)) {
 		updates.push('project = ?');
 		binds.push(project);
 	}
-	if (role && currentUser.role === 'admin') {
+	if (role && isAdmin(currentUser)) {
 		updates.push('role = ?');
 		binds.push(role);
 	}
@@ -104,14 +101,14 @@ export async function updateUser(c: AuthContext) {
 			.run();
 		return c.json({ message: 'User updated successfully' }, 200);
 	} catch (error) {
-		console.error('Error updating user:', error);
+		logger.error('Error updating user:', error);
 		return c.json({ error: 'Error updating user' }, 500);
 	}
 }
 
 export async function deleteUser(c: AuthContext) {
 	const currentUser = c.get('user');
-	if (currentUser.role !== 'admin') {
+	if (!isAdmin(currentUser)) {
 		return c.json({ error: 'Unauthorized' }, 403);
 	}
 
@@ -130,7 +127,7 @@ export async function deleteUser(c: AuthContext) {
 
 		return c.json({ message: 'User deleted successfully' }, 200);
 	} catch (error) {
-		console.error('Error deleting user:', error);
+		logger.error('Error deleting user:', error);
 		return c.json({ error: 'Error deleting user' }, 500);
 	}
 }
@@ -149,11 +146,12 @@ async function initAdminUser(c: AuthContext): Promise<Response> {
 			.run();
 		return c.json({ message: 'Initial admin user created successfully' }, 201);
 	} catch (error) {
-		console.error('Error creating initial admin user:', error);
+		logger.error('Error creating initial admin user:', error);
 		return c.json({ error: 'Error creating initial admin user' }, 500);
 	}
 }
 
+const userManager = new Hono<{ Bindings: Env }>();
 userManager.post('/config/init', initAdminUser);
 
 // Backup function

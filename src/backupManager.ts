@@ -1,6 +1,7 @@
 import { Env } from './types';
 import JSZip from 'jszip';
 import { createUsersBackup } from './userManager';
+import { logger } from './logger';
 
 // Function to create a zip file containing all Terraform state files
 export async function createStatesBackup(env: Env): Promise<Response> {
@@ -29,7 +30,7 @@ export async function createStatesBackup(env: Env): Promise<Response> {
 			},
 		});
 	} catch (error) {
-		console.error('Error creating states backup:', error);
+		logger.error('Error creating states backup:', error);
 		return new Response(JSON.stringify({ error: 'Error creating backup' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },

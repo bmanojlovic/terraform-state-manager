@@ -16,3 +16,11 @@ export interface User {
 
 export type AuthContext = Context<{ Bindings: Env, Variables: { user: User } }>;
 
+// Helper functions for authorization
+export const isAdmin = (user: User): boolean => user.role === 'admin';
+
+export const requireAdmin = (c: AuthContext): Response | null => {
+  const user = c.get('user');
+  return isAdmin(user) ? null : c.json({ error: 'Unauthorized' }, 403);
+};
+

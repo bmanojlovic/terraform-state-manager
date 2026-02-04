@@ -1,20 +1,13 @@
 import { Context, Next } from 'hono';
-import { Env } from './types';
+import { Env, User, AuthContext } from './types';
 import { verifyPassword } from './utils';
 import { GLOBAL_ENDPOINTS } from './constants';
-
-interface User {
-	username: string;
-	project: string;
-	role: string;
-}
-
-type AuthContext = Context<{ Bindings: Env; Variables: { user: User } }>;
+import { logger } from './logger';
 
 // Helper function to handle unauthorized requests
 async function handleUnauthorized(c: AuthContext, message: string): Promise<Response> {
-	console.log(`Debug: ${message}`);
-	return c.text('Unauthorized', 401);
+	logger.debug(message);
+	return c.json({ error: 'Unauthorized' }, 401);
 }
 
 // Middleware for combined Bearer and Basic authentication
@@ -51,7 +44,7 @@ export async function combinedAuth(c: AuthContext, next: Next) {
 
 		await next();
 	} catch (error) {
-		console.error('Error in authentication:', error);
+		logger.error('Error in authentication:', error);
 		return handleUnauthorized(c, 'Internal server error during authentication');
 	}
 }
@@ -61,8 +54,8 @@ export async function projectAuth(c: AuthContext, next: Next) {
 	const user = c.get('user');
 
 	if (!user) {
-		console.log('Debug: User object not found in context');
-		return c.text('Unauthorized', 401);
+		logger.debug('User object not found in context');
+		return c.json({ error: 'Unauthorized' }, 401);
 	}
 
 	const url = new URL(c.req.url);
@@ -70,30 +63,30 @@ export async function projectAuth(c: AuthContext, next: Next) {
 	const projectName = pathParts[4]; // Assuming the URL structure is /api/v1/state/<projectName>/...
 	const statePath = pathParts.slice(5).join('/');
 
-	console.log(`Debug: projectAuth - User: ${user.username}, Project: ${projectName || 'undefined'}, State: ${statePath || 'undefined'}`);
+	logger.debug(`projectAuth - User: ${user.username}, Project: ${projectName || 'undefined'}, State: ${statePath || 'undefined'}`);
 
 	if (user.role === 'admin') {
-		console.log(`Debug: User ${user.username} has admin access`);
+		logger.debug(`User ${user.username} has admin access`);
 		await next();
 		return;
 	}
 
 	if (GLOBAL_ENDPOINTS.some((endpoint) => url.pathname.startsWith(endpoint))) {
-		console.log(`Debug: User ${user.username} accessing global endpoint`);
+		logger.debug(`User ${user.username} accessing global endpoint`);
 		await next();
 		return;
 	}
 
 	if (!projectName) {
-		console.log(`Debug: No projectName found in URL for user: ${user.username}`);
-		return c.text('Bad Request: Missing project name', 400);
+		logger.debug(`No projectName found in URL for user: ${user.username}`);
+		return c.json({ error: 'Bad Request: Missing project name' }, 400);
 	}
 
 	if (user.project !== projectName) {
-		console.log(`Debug: User ${user.username} not authorized for project: ${projectName}`);
-		return c.text('Forbidden', 403);
+		logger.debug(`User ${user.username} not authorized for project: ${projectName}`);
+		return c.json({ error: 'Forbidden' }, 403);
 	}
 
-	console.log(`Debug: User ${user.username} authorized for project: ${projectName}, state path: ${statePath || 'N/A'}`);
+	logger.debug(`User ${user.username} authorized for project: ${projectName}, state path: ${statePath || 'N/A'}`);
 	await next();
 }
