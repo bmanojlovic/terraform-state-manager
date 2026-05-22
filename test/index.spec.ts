@@ -1,11 +1,12 @@
 // test/index.spec.ts
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeEach, afterEach, vi, assertType } from 'vitest';
 import worker from '../src/index';
 import { Env } from '../src/types';
 import { hashPassword } from '../src/utils';
 
-const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
+const createExecutionContext = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() });
+const waitOnExecutionContext = async (ctx: any) => {};
+const IncomingRequest = Request;
 
 describe('Terraform State Management System', () => {
   let mockEnv: Env;
