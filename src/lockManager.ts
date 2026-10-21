@@ -1,6 +1,7 @@
 import { Env } from './types';
 import { sanitizePath } from './utils';
 import { logger } from './logger';
+import { getLockTtlMs } from './configManager';
 
 // Interface for lock information
 interface LockInfo {
@@ -11,6 +12,15 @@ interface LockInfo {
 	Version: string;
 	Created: string;
 	Path: string;
+}
+
+// Determine whether an existing lock has aged past the TTL and can be taken over.
+function isLockStale(lockInfo: Partial<LockInfo>, ttlMs: number): boolean {
+	if (ttlMs <= 0) return false; // TTL disabled
+	if (!lockInfo.Created) return false; // no timestamp -> never auto-expire
+	const created = Date.parse(lockInfo.Created);
+	if (Number.isNaN(created)) return false; // unparseable -> treat as held
+	return Date.now() - created > ttlMs;
 }
 
 // Function to acquire a lock for a Terraform state
@@ -26,11 +36,21 @@ export async function acquireLock(projectName: string, statePath: string, lockIn
 			.first<{ lock_info: string }>();
 
 		if (existingLock) {
-			const existingLockInfo = JSON.parse(existingLock.lock_info);
-			return new Response(JSON.stringify(existingLockInfo), {
-				status: 423,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			const existingLockInfo: Partial<LockInfo> = JSON.parse(existingLock.lock_info);
+			const ttlMs = await getLockTtlMs(env);
+
+			// A lock older than the TTL is considered abandoned (e.g. a crashed
+			// or timed-out run) and may be taken over instead of blocking forever.
+			if (!isLockStale(existingLockInfo, ttlMs)) {
+				return new Response(JSON.stringify(existingLockInfo), {
+					status: 423,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+			logger.debug(`Overwriting stale lock ${existingLockInfo.ID} (older than TTL ${ttlMs}ms) for ${fullPath}`);
+			await env.DB.prepare('DELETE FROM locks WHERE project = ? AND name = ?')
+				.bind(sanitizedProjectName, sanitizedStatePath)
+				.run();
 		}
 
 		// Set lock information

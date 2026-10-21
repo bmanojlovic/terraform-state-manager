@@ -60,7 +60,7 @@ describe('Terraform State Management System', () => {
       request.headers.set('Authorization', 'Basic dGVzdDp0ZXN0LXBhc3N3b3Jk'); // test:test-password in base64
 
       mockEnv.BUCKET.get.mockResolvedValue({
-        text: () => Promise.resolve('{"test": "state"}'),
+        body: new Response('{"test": "state"}').body,
       });
 
       const ctx = createExecutionContext();
@@ -105,6 +105,31 @@ describe('Terraform State Management System', () => {
     });
 
     // Add more tests for lock management (release lock, get lock info)
+  });
+
+  describe('Unlock path compatibility', () => {
+    it('should release a lock via the /unlock/ alias path', async () => {
+      const request = new IncomingRequest('http://example.com/api/v1/unlock/test-project/test-state', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${mockEnv.AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ID: 'test-lock' }),
+      });
+
+      // existing lock lookup returns the held lock, then config TTL lookup
+      mockEnv.DB.first
+        .mockResolvedValueOnce({ lock_info: JSON.stringify({ ID: 'test-lock' }) });
+      mockEnv.DB.run.mockResolvedValue({ success: true });
+
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(request, mockEnv, ctx);
+      await waitOnExecutionContext(ctx);
+
+      // Must NOT be 404 (the bug) — alias should route to release
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('User Management', () => {

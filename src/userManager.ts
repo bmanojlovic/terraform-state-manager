@@ -113,6 +113,9 @@ export async function deleteUser(c: AuthContext) {
 	}
 
 	const username = c.req.param('username');
+	if (!username) {
+		return c.json({ error: 'Bad Request: Missing username' }, 400);
+	}
 	try {
 		const userExists = await checkUserExists(c.env, username);
 		if (!userExists) {

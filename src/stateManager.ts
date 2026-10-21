@@ -12,9 +12,11 @@ export async function getState(projectName: string, statePath: string, env: Env)
 		const object = await env.BUCKET.get(sanitizedStateName);
 
 		if (object) {
-			const state = await object.text();
 			logger.debug(`Debug: State found for ${fullStateName}`);
-			return new Response(state, {
+			// Stream the body straight to the response instead of buffering the
+			// entire state into a string with .text(). Large states (tens of MB)
+			// otherwise exhaust the 128MB isolate and surface as 503s.
+			return new Response(object.body, {
 				headers: { 'Content-Type': 'application/json' },
 			});
 		} else {
@@ -54,14 +56,21 @@ export async function listStates(c: AuthContext): Promise<string[]> {
 	}
 }
 
-// Function to set a Terraform state file
-export async function setState(projectName: string, statePath: string, state: string, env: Env): Promise<Response> {
+// Function to set a Terraform state file. Accepts a string or a ReadableStream
+// so large uploads can be streamed straight to R2 without buffering the whole
+// body into the isolate (which would risk exhausting memory -> 503).
+export async function setState(
+	projectName: string,
+	statePath: string,
+	state: string | ReadableStream | null,
+	env: Env
+): Promise<Response> {
 	const fullStateName = `${projectName}/${statePath}`;
 	const sanitizedStateName = sanitizePath(fullStateName);
 	logger.debug(`Debug: Setting state for ${sanitizedStateName}`);
 	try {
 		await rotateBackups(sanitizedStateName, env);
-		await env.BUCKET.put(sanitizedStateName, state);
+		await env.BUCKET.put(sanitizedStateName, state ?? '');
 		logger.debug(`Debug: State updated successfully for ${sanitizedStateName}`);
 		return new Response(JSON.stringify({ message: 'State updated successfully' }), {
 			status: 200,

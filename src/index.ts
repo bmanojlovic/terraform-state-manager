@@ -16,8 +16,8 @@ terraformGroup.use('*', combinedAuth, projectAuth);
 
 // Helper function to get project name and state path
 const getProjectAndStatePath = (c: AuthContext, prefix: string) => {
-	const projectName = c.req.param('projectName');
-	const statePath = c.req.path.split(`/${prefix}/${projectName}/`)[1];
+	const projectName = c.req.param('projectName') ?? '';
+	const statePath = c.req.path.split(`/${prefix}/${projectName}/`)[1] ?? '';
 	return { projectName, statePath };
 };
 
@@ -48,8 +48,8 @@ terraformGroup.get('/states/:projectName/*', async (c: AuthContext) => {
 
 terraformGroup.post('/states/:projectName/*', async (c: AuthContext) => {
 	const { projectName, statePath } = getProjectAndStatePath(c, 'states');
-	const body = await c.req.text();
-	return await setState(projectName, statePath, body, c.env);
+	// Stream the request body straight to R2 instead of buffering with .text().
+	return await setState(projectName, statePath, c.req.raw.body, c.env);
 });
 
 terraformGroup.delete('/states/:projectName/*', async (c: AuthContext) => {
@@ -84,6 +84,26 @@ terraformGroup.get('/lock/:projectName/*', async (c: AuthContext) => {
 terraformGroup.on(['LOCK', 'UNLOCK'], '/lock/:projectName/*', async (c: AuthContext) => {
 	return handleLock(c, c.req.method === 'LOCK' ? 'acquire' : 'release');
 });
+
+// Compatibility aliases: some generated root.hcl files use /unlock/ as the
+// unlock_address. Terraform issues the configured method (POST/DELETE/UNLOCK)
+// against it, so route all of them to the release handler. Without this, those
+// projects can never release a lock and get stuck permanently.
+const handleUnlockAlias = async (c: AuthContext) => {
+	const projectName = c.req.param('projectName') ?? '';
+	const statePath = c.req.path.split(`/unlock/${projectName}/`)[1] ?? '';
+	logger.debug(`Releasing lock via /unlock/ alias for project: ${projectName}, state path: ${statePath}`);
+	let body;
+	try {
+		body = await c.req.json();
+	} catch (error) {
+		body = {};
+	}
+	return await releaseLock(projectName, statePath, body, c.env);
+};
+terraformGroup.post('/unlock/:projectName/*', handleUnlockAlias);
+terraformGroup.delete('/unlock/:projectName/*', handleUnlockAlias);
+terraformGroup.on(['LOCK', 'UNLOCK'], '/unlock/:projectName/*', handleUnlockAlias);
 
 app.route('/api/v1', terraformGroup);
 
